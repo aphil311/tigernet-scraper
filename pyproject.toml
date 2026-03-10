@@ -1,11 +1,9 @@
 [project]
 name = "tigernet-scraper"
 version = "0.1.0"
-description = "TigerNet Scraper - Tool for scraping and processing data"
-requires-python = ">=3.9"
+description = "Simple web scraper for TigerNet"
+readme = "README.md"
+requires-python = ">=3.10"
 dependencies = [
-    "playwright>=1.40.0",
+    "typer[all]>=0.24.1",
 ]
-
-# This is a script-based project; no build backend needed
-# Dependencies will be installed in the venv when using `uv sync`
