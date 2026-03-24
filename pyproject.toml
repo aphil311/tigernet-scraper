@@ -5,5 +5,17 @@ description = "Simple web scraper for TigerNet"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "typer[all]>=0.24.1",
+    "typer>=0.24.1",
+    "playwright>=1.40.0",
+    "black>=26.3.1",
+    "openpyxl>=3.1.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
+]
+
+[project.scripts]
+tigernet-scraper = "tigernet_scraper.main:app"

@@ -1,3 +1,6 @@
+# Claude code
+.claude/settings.local.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -63,6 +66,7 @@ screenshots/
 output/
 logs/
 *.log
+session.json
 
 # Testing
 .pytest_cache/

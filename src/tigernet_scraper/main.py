@@ -1,28 +1,39 @@
+"""CLI entrypoint for TigerNet scraper."""
+
 import typer
 
-app = typer.Typer(
-    name="tigernet-scraper",
-    help="Simple web scraper for TigerNet",
-    add_completion=False,
-)
+from .auth import login, load_session, save_session
+from .exporter import write_excel
+from .models import AlumRecord
+from .scraper import search
+
+app = typer.Typer()
 
 
 @app.command()
 def scrape(
-    company: str = typer.Argument(..., help="Company to scrape"),
-    organizations: list[str] | None = typer.Option(
-        None, "--org", "-o", help="Organizations to scrape"
+    netid: str = typer.Option(..., prompt=True, hide_input=True),
+    password: str = typer.Option(..., prompt=True, hide_input=True),
+    company: str = typer.Argument(..., help="Company name to search"),
+    orgs: list[str] | None = typer.Option(
+        None, "--org", help="Organization/department filter"
+    ),
+    output: str = typer.Option(
+        "output/alumni.xlsx", "--output", "-o", help="Output Excel file path"
     ),
 ) -> None:
-    """Scrape company data from TigerNet.
 
-    Args:
-        company: The company name to scrape
-        organizations: Optional list of organizations to scrape
-    """
-    typer.echo(f"Company: {company}")
-    if organizations:
-        typer.echo(f"Organizations: {organizations}")
+    # Perform search (returns empty list for now)
+    records = search(
+        netid=netid,
+        password=password,
+        company=company,
+        orgs=orgs or [],
+    )
+
+    # Export to Excel (will create empty file if no records)
+    output_path = write_excel(records, output)
+    typer.echo(f"Exported {len(records)} records to {output_path}")
 
 
 if __name__ == "__main__":

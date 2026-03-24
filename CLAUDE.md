@@ -5,29 +5,80 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Install dependencies
+# Install dependencies (run once or after dependency changes)
 uv sync
 
-# Install Playwright browsers (required once after uv sync)
-uv run playwright install chromium
+# Run the project
+uv run tigernet-scraper <company> [--orgs <orgs>] [--output <output>]
 
-# Run the scraper
-uv run python main.py --url "https://example.com"
-uv run python main.py --url "https://example.com" --selector "title:h1" --selector "body:.content" --screenshot --output results.json
-
-# Format code
+# Format code (if black is added to dependencies)
 uv run black .
 
-# Run scraper module directly
-uv run python scraper.py "https://example.com"
+# Reinstall package in editable mode (if pyproject.toml changes)
+uv pip install -e .
 ```
+
+### Bash Commands Allowed
+- `uv run tigernet-scraper` — run the scraper CLI
 
 ## Architecture
 
-This is a two-file Python project using [Playwright](https://playwright.dev/python/) for browser-based scraping:
+This is a Python project using [Playwright](https://playwright.dev/python/) for browser-based scraping with a src-layout structure:
 
-- **`scraper.py`** — Core scraping logic. Contains the `Scraper` class (async context manager wrapping a Playwright Chromium browser) and the `scrape_url()` convenience function. The `Scraper.scrape()` method accepts CSS `selectors` dict, an optional `wait_for_selector`, a `custom_actions` async callback for interactive page manipulation, and a `take_screenshot` flag. Results are returned as a dict with keys: `status`, `url`, `title`, `content`, `data`, `screenshot`, `error`.
+```
+tigernet_scraper/
+├── main.py             # Entrypoint
+├── auth.py             # SSO / session management
+├── scraper.py          # Page navigation & extraction logic
+├── filters.py          # Query building & filter application
+├── exporter.py         # Excel output
+├── models.py           # AlumRecord dataclass
+└── session.json        # Persisted cookies (gitignored)
+```
 
-- **`main.py`** — CLI entry point. Parses `--url`, `--selector FIELD:CSS`, `--output`, `--screenshot`, and `--visible` flags, then delegates to `scrape_url()`. Outputs JSON to a file when `--output` is specified.
+## API overview
+**`main.py`** — parses args, wires everything together, owns the rich console/progress UI
 
-The scraper always uses Chromium, sets a 1920×1080 viewport, and mimics a Windows Chrome user-agent string.
+**`auth.py`** - handles authentication (Princeton CAS) flow on the TigerNet website
+```python
+def load_session(context) -> bool  # loads cookies from session.json, returns True if valid
+def login(page, netid, password) -> None  # drives CAS login form
+def save_session(context) -> None  # persists cookies after successful login
+```
+
+**`scraper.py`** - handles the actual scraping of the website
+```python
+def search(page, company: str, orgs: list[str] | None) -> list[AlumRecord]
+def _apply_filters(page, company, orgs) -> None
+def _paginate(page) -> Iterator[list[AlumRecord]]  # yields per-page batches
+def _parse_record(element) -> AlumRecord
+```
+
+**`filter.py*`** - filters
+```python
+def build_query(company: str, orgs: list[str] | None) -> dict  # search params
+def validate_orgs(orgs: list[str]) -> list[str]  # normalize / warn on unknowns
+```
+
+**`exporter.py`** - handles taking the alum objects and exports them to an excel file
+```python
+def write_excel(records: list[AlumRecord], path: str) -> str  # returns final path
+```
+
+**`models.py`** - alum record
+```python
+@dataclass
+class AlumRecord:
+    name: str
+    class_year: int | None
+    degree: str | None
+    company: str | None
+    title: str | None
+    org: str | None        # concentration/dept
+    email: str | None
+    linkedin: str | None
+    location: str | None
+```
+
+# Tips and tricks
+*@Claude please insert anything here that is useful to you in solving problems in this repository.*
