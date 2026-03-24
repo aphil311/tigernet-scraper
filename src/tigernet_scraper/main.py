@@ -1,6 +1,11 @@
 """CLI entrypoint for TigerNet scraper."""
 
+import asyncio
+import os
+from pathlib import Path
+
 import typer
+from dotenv import load_dotenv
 
 from .auth import login, load_session, save_session
 from .exporter import write_excel
@@ -10,10 +15,33 @@ from .scraper import search
 app = typer.Typer()
 
 
+def _load_env_credentials() -> tuple[str, str]:
+    """Load credentials from .env file."""
+    env_path = Path(".env")
+    if not env_path.exists():
+        typer.echo("Error: .env file not found.", err=True)
+        typer.echo("Create a .env file with NETID and PASSWORD variables.", err=True)
+        raise typer.Exit(1)
+
+    load_dotenv(env_path)
+    netid = os.getenv("NETID")
+    password = os.getenv("PASSWORD")
+
+    if not netid or not password:
+        typer.echo("Error: NETID and PASSWORD must be set in .env file", err=True)
+        raise typer.Exit(1)
+
+    return netid, password
+
+
 @app.command()
 def scrape(
-    netid: str = typer.Option(..., prompt=True, hide_input=True),
-    password: str = typer.Option(..., prompt=True, hide_input=True),
+    netid: str | None = typer.Option(
+        None, "--netid", help="NetID for TigerNet (optional if using --test)"
+    ),
+    password: str | None = typer.Option(
+        None, "--password", help="Password for TigerNet (optional if using --test)"
+    ),
     company: str = typer.Argument(..., help="Company name to search"),
     orgs: list[str] | None = typer.Option(
         None, "--org", help="Organization/department filter"
@@ -21,15 +49,27 @@ def scrape(
     output: str = typer.Option(
         "output/alumni.xlsx", "--output", "-o", help="Output Excel file path"
     ),
+    test: bool = typer.Option(
+        False, "--test", help="Use credentials from .env file instead of prompting"
+    ),
 ) -> None:
+    # Handle credential acquisition
+    if test:
+        netid, password = _load_env_credentials()
+    else:
+        # If not using --test, use provided credentials or prompt
+        if netid is None:
+            netid = typer.prompt("NetID", hide_input=True)
+        if password is None:
+            password = typer.prompt("Password", hide_input=True)
 
     # Perform search (returns empty list for now)
-    records = search(
+    records = asyncio.run(search(
         netid=netid,
         password=password,
         company=company,
         orgs=orgs or [],
-    )
+    ))
 
     # Export to Excel (will create empty file if no records)
     output_path = write_excel(records, output)

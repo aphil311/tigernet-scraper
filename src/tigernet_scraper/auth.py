@@ -1,5 +1,6 @@
 """Authentication module for TigerNet scraper."""
 
+import asyncio
 import json
 import os
 from datetime import datetime
@@ -14,19 +15,20 @@ def _ensure_screenshot_dir() -> None:
     os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 
-def _take_screenshot(page: Any, name: str) -> str:
+async def _take_screenshot(page: Any, name: str) -> str:
     """Take a screenshot and save it with timestamp."""
     _ensure_screenshot_dir()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     filename = f"{SCREENSHOT_DIR}/{timestamp}_{name}.png"
-    page.screenshot(path=filename)
+    await page.screenshot(path=filename)
     return filename
 
 
-def handle_cookie_popup(page: Any) -> None:
+async def handle_cookie_popup(page: Any) -> None:
     """Handle cookie consent popups that may appear after login.
 
     Checks for cookie notice text and clicks the accept button if present.
+    Uses async waiting instead of blocking timeouts.
     """
     try:
         # Check for various cookie notice text variations
@@ -42,7 +44,7 @@ def handle_cookie_popup(page: Any) -> None:
         for selector in cookie_notice_selectors:
             try:
                 locator = page.locator(selector)
-                if locator.count > 0:
+                if await locator.count() > 0:
                     cookie_notice = locator
                     # Debug: print what we found
                     print(f"Found cookie notice with selector: {selector}")
@@ -66,7 +68,7 @@ def handle_cookie_popup(page: Any) -> None:
             for selector in accept_button_selectors:
                 try:
                     locator = page.locator(selector)
-                    if locator.count > 0:
+                    if await locator.count() > 0:
                         accept_button = locator
                         # Debug: print what we found
                         print(f"Found accept button with selector: {selector}")
@@ -75,19 +77,22 @@ def handle_cookie_popup(page: Any) -> None:
                     continue
 
             if accept_button:
-                accept_button.first.click(timeout=5000)
-                # Wait for the cookie notice to disappear
-                page.wait_for_timeout(2000)
+                await accept_button.first.click(timeout=5000)
+                # Wait for the cookie notice to disappear using async wait
+                try:
+                    await cookie_notice.wait_for(state="hidden", timeout=2000)
+                except Exception:
+                    # If hidden state wait fails, fall back to a short sleep
+                    await asyncio.sleep(0.5)
                 print("Clicked cookie accept button")
             else:
                 print("Cookie notice found but no accept button located")
         else:
             # Debug: let's see what text is actually on the page
             # Uncomment the following lines for debugging if needed
-            page_content = page.content()
+            page_content = await page.content()
             if "cookie" in page_content.lower():
                 print("Page contains 'cookie' but our selectors didn't match")
-                # print(f"Page title: {page.content()}")
             pass
     except Exception as e:
         # If anything goes wrong, silently continue - no cookie popup or already handled
@@ -95,7 +100,7 @@ def handle_cookie_popup(page: Any) -> None:
         pass
 
 
-def load_session(context: Any) -> bool:
+async def load_session(context: Any) -> bool:
     """Load cookies from session.json, return True if valid."""
     if not os.path.exists(SESSION_FILE):
         return False
@@ -117,36 +122,38 @@ def load_session(context: Any) -> bool:
         return False
 
 
-def login(page: Any, netid: str, password: str) -> None:
+async def login(page: Any, netid: str, password: str) -> None:
     """Drive CAS login form to authenticate."""
     # Step 1: Navigate to TigerNet login page with longer timeout
-    page.goto("https://tigernet.princeton.edu/login", timeout=60000)
-    page.wait_for_load_state("domcontentloaded", timeout=30000)
-    _take_screenshot(page, "01_login")
+    await page.goto("https://tigernet.princeton.edu/login", timeout=60000)
+    await page.wait_for_load_state("domcontentloaded", timeout=30000)
+    await _take_screenshot(page, "01_login")
 
     # Step 4: Fill in credentials
-    page.fill("input[name='username']", netid)
-    page.fill("input[name='password']", password)
-    _take_screenshot(page, "02_credentials_filled")
+    await page.fill("input[name='username']", netid)
+    await page.fill("input[name='password']", password)
+    await _take_screenshot(page, "02_credentials_filled")
 
     # Step 5: Submit the form
-    page.click("button[id='submitBtn']")
-    _take_screenshot(page, "03_after_submit")
+    await page.click("button[id='submitBtn']")
+    await _take_screenshot(page, "03_after_submit")
 
-    # Step 6: Wait for login to complete with more generous timeout
-    page.wait_for_load_state("domcontentloaded", timeout=60000)
-    # Extra wait for potential redirects and dynamic content
-    page.wait_for_timeout(3000)
-    page.goto("https://tigernet.princeton.edu/people", timeout=60000)
-    page.wait_for_load_state("domcontentloaded", timeout=30000)
-    page.wait_for_timeout(10000)
+    # Step 6: Wait for login to complete - wait for navigation to complete
+    await page.wait_for_load_state("domcontentloaded", timeout=60000)
+    # Wait for network to be idle after redirect (ensures login fully processes)
+    try:
+        await page.wait_for_load_state("networkidle", timeout=10000)
+    except Exception:
+        # If networkidle times out, the page may still be usable; fall back to a short sleep
+        await asyncio.sleep(1)
+
     # Handle any cookie consent popups that may have appeared
-    handle_cookie_popup(page)
-    _take_screenshot(page, "06_after_login_complete")
+    await handle_cookie_popup(page)
+    await _take_screenshot(page, "06_after_login_complete")
 
 
-def save_session(context: Any) -> None:
+async def save_session(context: Any) -> None:
     """Persist cookies after successful login."""
-    cookies = context.cookies()
+    cookies = await context.cookies()
     with open(SESSION_FILE, "w") as f:
         json.dump(cookies, f, indent=2)
