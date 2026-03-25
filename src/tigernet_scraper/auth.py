@@ -135,7 +135,7 @@ async def login(page: Any, netid: str, password: str) -> None:
 
     # Handle any cookie consent popups that may have appeared
     await handle_cookie_popup(page)
-    await take_screenshot(page, "06_after_login_complete")
+    # await take_screenshot(page, "06_after_login_complete")
 
 
 async def save_session(context: Any) -> None:

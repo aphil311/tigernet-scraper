@@ -3,6 +3,7 @@
 import asyncio
 import re
 from typing import Any
+import typer
 
 from .auth import login, load_session, save_session
 from .company_lookup import get_company_id
@@ -17,6 +18,7 @@ async def search(
     company: str,
     orgs: list[str],
     site: str = "https://tigernet.princeton.edu",
+    max_results: int = 20,
 ) -> list[str]:
     """Search for alumni by company and optional org filters. Returns list of user IDs."""
     from playwright.async_api import async_playwright
@@ -93,13 +95,14 @@ async def search(
                         user_ids.add(match.group(1))
 
             idx = 0
-            for id in user_ids:
-                if idx == 0:
-                    record = await _parse_record(page, site, id)
-                    print(f"Sample record for user ID {id}: {record}")
-                    idx += 1
-                else:
-                    break
+            records = min(len(user_ids), max_results)
+            with typer.progressbar(
+                range(records), label="Extracting alumni records"
+            ) as progress:
+                for value in progress:
+                    uid = list(user_ids)[value]
+                    record = await _parse_record(page, site, uid, company)
+                    # print(f"Sample record for user ID {uid}: {record}")
 
             print(f"Found {len(user_ids)} user IDs on the page")
             return list(user_ids)
@@ -109,17 +112,14 @@ async def search(
             await browser.close()
 
 
-async def _apply_filters(page: Any, company: str, orgs: list[str] | None) -> None:
-    """Apply search filters to the page."""
-    raise NotImplementedError("_apply_filters not yet implemented")
-
-
 async def _paginate(page: Any) -> list[AlumRecord]:
     """Yield per-page batches of records."""
     raise NotImplementedError("_paginate not yet implemented")
 
 
-async def _parse_record(page: Page, site: str, user_id: str) -> AlumRecord:
+async def _parse_record(
+    page: Page, site: str, user_id: str, company: str
+) -> AlumRecord:
     """Extract alumni data from an individual profile page."""
     await page.goto(f"{site}/users/{user_id}", timeout=60000)
 
@@ -131,31 +131,22 @@ async def _parse_record(page: Page, site: str, user_id: str) -> AlumRecord:
     # Extract name
     name = await page.locator('[data-testid="user-profile-header-v2"] h3').inner_text()
 
-    await take_screenshot(page, f"10_after_navigate_to_profile_{user_id}")
+    # await take_screenshot(page, f"10_after_navigate_to_profile_{user_id}")
 
-    # Use JavaScript to extract email, class_year, student_activities, experiences
+    # Use JavaScript to extract class_year, student_activities, experiences
     extracted = await page.evaluate("""() => {
         const data = {
-            email: null,
             class_year: null,
             student_activities: null,
             experiences: []
         };
 
-        // 1. Find email in Contact block - look for label "Email" or "Contact"
+        // Find class year and student activities in Contact block
         const labels = document.querySelectorAll('[class*="sc-51dca075-2"]');
         for (const label of labels) {
             const text = label.textContent.trim().toLowerCase();
             const row = label.closest('[class*="sc-51dca075-0"]');
             if (!row) continue;
-
-            // Email: look for "email" in label
-            if (text.includes("email")) {
-                const mailto = row.querySelector('a[href^="mailto:"]');
-                if (mailto) {
-                    data.email = mailto.href.replace(/^mailto:/, '').split('?')[0];
-                }
-            }
 
             // Class Year: label contains "class" and "year"
             if (text.includes("class") && text.includes("year")) {
@@ -178,33 +169,48 @@ async def _parse_record(page: Page, site: str, user_id: str) -> AlumRecord:
             }
         }
 
-        // 2. Extract work experiences
+        // Extract work experiences
         const expBlock = document.querySelector('[data-testid="block-experiences-experience"]');
         if (expBlock) {
             const cards = expBlock.querySelectorAll('[class*="LggnV"]');
             data.experiences = Array.from(cards).map(card => {
                 const parts = card.querySelectorAll('[class*="gLbFu"]');
                 const title = parts[0]?.textContent.trim() || "";
-                const company = parts[1]?.textContent.trim() || "";
-                return title + " at " + company;
+                const comp = parts[1]?.textContent.trim() || "";
+                return title + " at " + comp;
             }).filter(e => e); // remove empty
         }
 
         return data;
     }""")
 
-    email = extracted.get("email")
+    # Extract email: first mailto link within #block-contact-contact
+    email = None
+    try:
+        mailto_link = page.locator('#block-contact-contact a[href^="mailto:"]').first
+        href = await mailto_link.get_attribute("href")
+        if href:
+            email = href.replace("mailto:", "").split("?")[0]
+    except Exception:
+        pass
+
     class_year = extracted.get("class_year")
     student_activities = extracted.get("student_activities")
     experiences = extracted.get("experiences", [])
-    experience = ", ".join(experiences) if experiences else None
+
+    title = None
+
+    for e in experiences:
+        if company.lower() in e.lower():
+            title = e.split(" at ")[0].strip()
+            break
 
     return AlumRecord(
         name=name,
         class_year=class_year,
         degree=None,
-        company=None,
-        title=None,
+        company=company,  # Use the provided company
+        title=title,
         org=student_activities,
         email=email,
         linkedin=None,
