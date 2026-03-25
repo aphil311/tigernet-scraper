@@ -1,6 +1,7 @@
 """Exporter module for TigerNet scraper."""
 
 import os
+from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
@@ -57,3 +58,18 @@ def write_excel(records: list[AlumRecord], path: str) -> str:
 
     wb.save(path)
     return os.path.abspath(path)
+
+
+def write_timestamped_excel(
+    records: list[AlumRecord], company: str, output_dir: str = "output"
+) -> str:
+    """Write records to Excel with timestamped filename: YYMMDD_HHMM_Company.xlsx."""
+    timestamp = datetime.now().strftime("%y%m%d_%H%M")
+    # Sanitize company name for filename (remove illegal chars, replace spaces)
+    safe_company = "".join(
+        c for c in company if c.isalnum() or c in (" ", "-", "_")
+    ).rstrip()
+    safe_company = safe_company.replace(" ", "_")
+    filename = f"{timestamp}_{safe_company}.xlsx"
+    path = os.path.join(output_dir, filename)
+    return write_excel(records, path)

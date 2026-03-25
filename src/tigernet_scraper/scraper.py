@@ -3,13 +3,15 @@
 import asyncio
 import re
 from typing import Any
+
 import typer
+from playwright.async_api import Page
 
 from .auth import login, load_session, save_session
 from .company_lookup import get_company_id
+from .exporter import write_timestamped_excel
 from .models import AlumRecord
 from .utils import take_screenshot
-from playwright.async_api import Page
 
 
 async def search(
@@ -19,8 +21,8 @@ async def search(
     orgs: list[str],
     site: str = "https://tigernet.princeton.edu",
     max_results: int = 20,
-) -> list[str]:
-    """Search for alumni by company and optional org filters. Returns list of user IDs."""
+) -> list[AlumRecord]:
+    """Search for alumni by company and optional org filters. Returns list of AlumRecord."""
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
@@ -94,18 +96,22 @@ async def search(
                     if match:
                         user_ids.add(match.group(1))
 
-            idx = 0
-            records = min(len(user_ids), max_results)
-            with typer.progressbar(
-                range(records), label="Extracting alumni records"
-            ) as progress:
-                for value in progress:
-                    uid = list(user_ids)[value]
-                    record = await _parse_record(page, site, uid, company)
-                    # print(f"Sample record for user ID {uid}: {record}")
+            # Limit to max_results and collect all records
+            user_id_list = list(user_ids)[:max_results]
+            all_records = []
 
-            print(f"Found {len(user_ids)} user IDs on the page")
-            return list(user_ids)
+            with typer.progressbar(
+                user_id_list, label="Extracting alumni records"
+            ) as progress:
+                for uid in progress:
+                    record = await _parse_record(page, site, uid, company)
+                    all_records.append(record)
+
+            # Export to Excel with timestamped filename
+            output_path = write_timestamped_excel(all_records, company)
+            print(f"Exported {len(all_records)} records to {output_path}")
+
+            return all_records
 
         finally:
             await context.close()
