@@ -7,9 +7,7 @@ from pathlib import Path
 import typer
 from dotenv import load_dotenv
 
-from .auth import login, load_session, save_session
 from .exporter import write_excel
-from .models import AlumRecord
 from .scraper import search
 
 app = typer.Typer()
@@ -64,12 +62,14 @@ def scrape(
             password = typer.prompt("Password", hide_input=True)
 
     # Perform search (returns empty list for now)
-    records = asyncio.run(search(
-        netid=netid,
-        password=password,
-        company=company,
-        orgs=orgs or [],
-    ))
+    records = asyncio.run(
+        search(
+            netid=netid,
+            password=password,
+            company=company,
+            orgs=orgs or [],
+        )
+    )
 
     # Export to Excel (will create empty file if no records)
     output_path = write_excel(records, output)

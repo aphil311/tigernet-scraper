@@ -3,25 +3,11 @@
 import asyncio
 import json
 import os
-from datetime import datetime
 from typing import Any
 
+from .utils import ensure_screenshot_dir, take_screenshot
+
 SESSION_FILE = "session.json"
-SCREENSHOT_DIR = "screenshots"
-
-
-def _ensure_screenshot_dir() -> None:
-    """Create screenshots directory if it doesn't exist."""
-    os.makedirs(SCREENSHOT_DIR, exist_ok=True)
-
-
-async def _take_screenshot(page: Any, name: str) -> str:
-    """Take a screenshot and save it with timestamp."""
-    _ensure_screenshot_dir()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    filename = f"{SCREENSHOT_DIR}/{timestamp}_{name}.png"
-    await page.screenshot(path=filename)
-    return filename
 
 
 async def handle_cookie_popup(page: Any) -> None:
@@ -34,10 +20,10 @@ async def handle_cookie_popup(page: Any) -> None:
         # Check for various cookie notice text variations
         cookie_notice_selectors = [
             'text="Our website uses cookies"',
-            'text=cookies',
+            "text=cookies",
             'text="Cookie"',
             'text="Privacy"',
-            'text="We use cookies"'
+            'text="We use cookies"',
         ]
 
         cookie_notice = None
@@ -61,7 +47,7 @@ async def handle_cookie_popup(page: Any) -> None:
                 'button:has-text("Agree")',
                 'button:has-text("OK")',
                 'button:has-text("I Agree")',
-                'button:has-text("Accept all")'
+                'button:has-text("Accept all")',
             ]
 
             accept_button = None
@@ -113,7 +99,7 @@ async def load_session(context: Any) -> bool:
             return False
 
         # Add cookies to context
-        context.add_cookies(cookies)
+        await context.add_cookies(cookies)
 
         # Basic validation: check if we have any TigerNet cookies
         # A more robust check would require a test navigation
@@ -127,16 +113,16 @@ async def login(page: Any, netid: str, password: str) -> None:
     # Step 1: Navigate to TigerNet login page with longer timeout
     await page.goto("https://tigernet.princeton.edu/login", timeout=60000)
     await page.wait_for_load_state("domcontentloaded", timeout=30000)
-    await _take_screenshot(page, "01_login")
+    await take_screenshot(page, "01_login")
 
     # Step 4: Fill in credentials
     await page.fill("input[name='username']", netid)
     await page.fill("input[name='password']", password)
-    await _take_screenshot(page, "02_credentials_filled")
+    await take_screenshot(page, "02_credentials_filled")
 
     # Step 5: Submit the form
     await page.click("button[id='submitBtn']")
-    await _take_screenshot(page, "03_after_submit")
+    await take_screenshot(page, "03_after_submit")
 
     # Step 6: Wait for login to complete - wait for navigation to complete
     await page.wait_for_load_state("domcontentloaded", timeout=60000)
@@ -149,7 +135,7 @@ async def login(page: Any, netid: str, password: str) -> None:
 
     # Handle any cookie consent popups that may have appeared
     await handle_cookie_popup(page)
-    await _take_screenshot(page, "06_after_login_complete")
+    await take_screenshot(page, "06_after_login_complete")
 
 
 async def save_session(context: Any) -> None:

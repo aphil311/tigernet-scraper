@@ -1,11 +1,12 @@
 """Scraper module for TigerNet."""
 
 import asyncio
-from typing import Any, Iterator
+from typing import Any
 
-from .auth import load_session, login, save_session
+from .auth import login, load_session, save_session
+from .company_lookup import get_company_id
 from .models import AlumRecord
-from .auth import _ensure_screenshot_dir, _take_screenshot
+from .utils import take_screenshot
 
 
 async def search(
@@ -13,7 +14,7 @@ async def search(
     password: str,
     company: str,
     orgs: list[str],
-    site: str = "https://tigernet.princeton.edu/people",
+    site: str = "https://tigernet.princeton.edu",
 ) -> list[AlumRecord]:
     """Search for alumni by company and optional org filters."""
     from playwright.async_api import async_playwright
@@ -24,12 +25,27 @@ async def search(
         page = await context.new_page()
 
         try:
-            # Need to login; login() handles navigation
-            await login(page, netid, password)
-            await save_session(context)  # Persist cookies after successful login
+            # Try to load existing session first
+            if not await load_session(context):
+                # No valid session, need to login
+                await login(page, netid, password)
+                await save_session(context)  # Persist cookies after successful login
 
-            # Navigate to the site (should be logged in now)
-            await page.goto(site, timeout=60000)
+            # Determine target URL with company ID if available
+            company_id = get_company_id(company)
+            if company_id:
+                print(f"Found company ID for '{company}': {company_id}")
+                # Build URL with company_ids query parameter
+                base_url = site.rstrip("/")
+                target_url = f"{base_url}/people?company_ids={company_id}"
+            else:
+                print(
+                    f"Company ID not found for '{company}'. Navigating to {site} without filter."
+                )
+                target_url = site
+
+            # Navigate to the target page
+            await page.goto(target_url, timeout=60000)
             await page.wait_for_load_state("domcontentloaded", timeout=30000)
 
             # Wait for the Members header to appear, indicating results are fully loaded
@@ -43,7 +59,7 @@ async def search(
                     # As last resort, short sleep
                     await asyncio.sleep(1)
 
-            await _take_screenshot(page, "05_after_navigate_to_search")
+            await take_screenshot(page, "05_after_navigate_to_search")
 
             # TODO: Implement actual search logic: apply filters, paginate, parse records
             return []
@@ -54,14 +70,14 @@ async def search(
 
 async def _apply_filters(page: Any, company: str, orgs: list[str] | None) -> None:
     """Apply search filters to the page."""
-    pass
+    raise NotImplementedError("_apply_filters not yet implemented")
 
 
-async def _paginate(page: Any) -> Iterator[list[AlumRecord]]:
+async def _paginate(page: Any) -> list[AlumRecord]:
     """Yield per-page batches of records."""
-    pass
+    raise NotImplementedError("_paginate not yet implemented")
 
 
 async def _parse_record(element: Any) -> AlumRecord:
     """Parse a single record element into AlumRecord."""
-    pass
+    raise NotImplementedError("_parse_record not yet implemented")
