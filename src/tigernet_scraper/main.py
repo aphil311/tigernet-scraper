@@ -61,8 +61,8 @@ def scrape(
         if password is None:
             password = typer.prompt("Password", hide_input=True)
 
-    # Perform search (returns empty list for now)
-    records = asyncio.run(
+    # Perform search (returns list of user IDs)
+    user_ids = asyncio.run(
         search(
             netid=netid,
             password=password,
@@ -71,9 +71,18 @@ def scrape(
         )
     )
 
-    # Export to Excel (will create empty file if no records)
-    output_path = write_excel(records, output)
-    typer.echo(f"Exported {len(records)} records to {output_path}")
+    # Save user IDs to text file
+    import os
+
+    os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
+    # Change extension to .txt for user IDs
+    txt_output = output.rsplit(".", 1)[0] + ".txt"
+    with open(txt_output, "w") as f:
+        for uid in user_ids:
+            f.write(f"{uid}\n")
+
+    typer.echo(f"Found {len(user_ids)} user IDs")
+    typer.echo(f"Saved user IDs to {txt_output}")
 
 
 if __name__ == "__main__":
