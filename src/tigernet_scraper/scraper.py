@@ -20,13 +20,13 @@ async def search(
     company: str,
     orgs: list[str],
     site: str = "https://tigernet.princeton.edu",
-    max_results: int = 2,
+    max_results: int = 30,
 ) -> list[AlumRecord]:
     """Search for alumni by company and optional org filters. Returns list of AlumRecord."""
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
 
@@ -119,7 +119,9 @@ async def search(
 async def _paginate(page: Any, site, company, max_results) -> list:
     """Yield per-page batches of records."""
     # Extract all user IDs from the results page using Playwright
-    links = page.locator('a[href*="/users/"]:not([aria-hidden="true"])')
+    links = page.locator(
+        'div[data-testid="directory-list-user-card"] a[href*="/users/"]:not([aria-hidden="true"])'
+    )
     count = await links.count()
     # print(count)
 
