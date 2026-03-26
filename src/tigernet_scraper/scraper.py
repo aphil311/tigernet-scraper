@@ -20,13 +20,13 @@ async def search(
     company: str,
     orgs: list[str],
     site: str = "https://tigernet.princeton.edu",
-    max_results: int = 20,
+    max_results: int = 2,
 ) -> list[AlumRecord]:
     """Search for alumni by company and optional org filters. Returns list of AlumRecord."""
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=False)
         context = await browser.new_context()
         page = await context.new_page()
 
@@ -66,42 +66,40 @@ async def search(
             # Also wait for profile cards/links to be present
             # Try various selectors for result cards
             card_selectors = [
-                '[data-testid*="profile-card"]',
                 '[data-testid*="user-card"]',
-                ".profile-card",
-                ".user-card",
-                'a[href*="/users/"]:not([aria-hidden="true"])',
             ]
             for selector in card_selectors:
                 try:
                     await page.wait_for_selector(selector, timeout=5000)
-                    print(f"Found results with selector: {selector}")
+                    # print(f"Found results with selector: {selector}")
                     break
                 except Exception:
                     continue
 
             await take_screenshot(page, "05_after_navigate_to_search")
 
-            # Extract all user IDs from the results page using Playwright
-            links = page.locator('a[href*="/users/"]:not([aria-hidden="true"])')
-            count = await links.count()
+            uid_list = []
+            while True:  # Try a few times to handle any dynamic loading issues
+                uid_list.extend(await _paginate(page, site, company, max_results))
 
-            user_ids = set()
-            pattern = re.compile(r"/users/(\d+)")
-            for i in range(count):
-                link = links.nth(i)
-                href = await link.get_attribute("href")
-                if href:
-                    match = pattern.search(href)
-                    if match:
-                        user_ids.add(match.group(1))
+                if await page.get_by_role("button", name="Next page").is_disabled():
+                    break  # No more pages
+                else:
+                    await page.get_by_role("button", name="Next page").click()
+                    try:
+                        await page.wait_for_selector(
+                            "h2:has-text('Members')", timeout=15000
+                        )
+                    except Exception:
+                        try:
+                            await page.wait_for_selector("h2", timeout=5000)
+                        except Exception:
+                            await asyncio.sleep(1)
 
-            # Limit to max_results and collect all records
-            user_id_list = list(user_ids)[:max_results]
             all_records = []
 
             with typer.progressbar(
-                user_id_list, label="Extracting alumni records"
+                uid_list, label="Extracting alumni records"
             ) as progress:
                 for uid in progress:
                     record = await _parse_record(page, site, uid, company)
@@ -118,9 +116,27 @@ async def search(
             await browser.close()
 
 
-async def _paginate(page: Any) -> list[AlumRecord]:
+async def _paginate(page: Any, site, company, max_results) -> list:
     """Yield per-page batches of records."""
-    raise NotImplementedError("_paginate not yet implemented")
+    # Extract all user IDs from the results page using Playwright
+    links = page.locator('a[href*="/users/"]:not([aria-hidden="true"])')
+    count = await links.count()
+    # print(count)
+
+    user_ids = set()
+    pattern = re.compile(r"/users/(\d+)")
+    for i in range(count):
+        link = links.nth(i)
+        if await link.is_visible():
+            href = await link.get_attribute("href")
+            if href:
+                match = pattern.search(href)
+                if match:
+                    user_ids.add(match.group(1))
+
+    # Limit to max_results and collect all records
+    user_id_list = list(user_ids)[:max_results]
+    return user_id_list
 
 
 async def _parse_record(
