@@ -50,6 +50,9 @@ def scrape(
     test: bool = typer.Option(
         False, "--test", help="Use credentials from .env file instead of prompting"
     ),
+    max_results: int = typer.Option(
+        int(1e9), "--max", "-m", help="Maximum number of alumni records to scrape"
+    ),
 ) -> None:
     # Handle credential acquisition
     if test:
@@ -68,6 +71,7 @@ def scrape(
             password=password,
             company=company,
             orgs=orgs or [],
+            max_results=max_results
         )
     )
 

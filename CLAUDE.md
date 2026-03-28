@@ -82,4 +82,4 @@ class AlumRecord:
 
 # Tips and tricks
 *@Claude please insert anything here that is useful to you in solving problems in this repository.*
-1. Any time you write new code you must run `uv run tigernet-scraper --test Google` to observe if there are obvious errors in the program. If there are, you must fix them.
+1. Any time you write new code you must run `uv run tigernet-scraper --test Google -m 10` to observe if there are obvious errors in the program. If there are, you must fix them.

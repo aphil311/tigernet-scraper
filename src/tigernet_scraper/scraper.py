@@ -20,7 +20,7 @@ async def search(
     company: str,
     orgs: list[str],
     site: str = "https://tigernet.princeton.edu",
-    max_results: int = 30,
+    max_results: int = int(1e9),
 ) -> list[AlumRecord]:
     """Search for alumni by company and optional org filters. Returns list of AlumRecord."""
     from playwright.async_api import async_playwright
@@ -82,7 +82,7 @@ async def search(
             while True:  # Try a few times to handle any dynamic loading issues
                 uid_list.extend(await _paginate(page, site, company, max_results))
 
-                if await page.get_by_role("button", name="Next page").is_disabled():
+                if await page.get_by_role("button", name="Next page").is_disabled() or len(uid_list) >= max_results:
                     break  # No more pages
                 else:
                     await page.get_by_role("button", name="Next page").click()
@@ -96,6 +96,7 @@ async def search(
                         except Exception:
                             await asyncio.sleep(1)
 
+            uid_list = uid_list[:max_results]  # Ensure we don't exceed max_results
             all_records = []
 
             with typer.progressbar(
